@@ -172,7 +172,7 @@ def handle_pull_request_synchronized(payload, github_app):
                 patch_preview = file['patch'][:200]
                 if len(file['patch']) > 200:
                     patch_preview += '...'
-                print(f"   Patch preview: {patch_preview}")
+                # print(f"   Patch preview: {patch_preview}")
             print('')
         print(f"=== END Files Changed (Synchronized) ===\n")
 

@@ -34,8 +34,8 @@ def create_app(github_app):
         
         # Log headers for POST requests
         if request.method == 'POST':
-            print('POST Request Headers:')
-            print(json.dumps(dict(request.headers), indent=2))
+            # print('POST Request Headers:')
+            # print(json.dumps(dict(request.headers), indent=2))
             
             # Log the GitHub event type if it's a webhook
             github_event = request.headers.get('X-GitHub-Event')
