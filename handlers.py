@@ -1,13 +1,21 @@
 import requests
 from github import Github, Auth, GithubIntegration
 import json
+from datetime import datetime
 
 # This defines the message that your app will post to pull requests.
 MESSAGE_FOR_NEW_PRS = "Thanks for opening a new PR! Please follow our contributing guidelines to make your PR easier to review."
 
-def get_installation_access_token(github_app, repo_owner, repo_name):
+def create_bot_review_comment():
     """
-    Get an installation access token for the GitHub App to access the repository
+    Create a comment indicating the PR has been reviewed by the Innovation days bot
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
+    return f"🤖 **Innovation days bot** has reviewed this PR at `{timestamp}`"
+
+def get_installation_github(github_app, repo_owner, repo_name):
+    """
+    Get a GitHub instance authenticated with installation access token for the repository
     """
     try:
         # Extract app_id and private_key from the github_app object
@@ -24,10 +32,13 @@ def get_installation_access_token(github_app, repo_owner, repo_name):
         # Get the access token for this installation
         access_token = integration.get_access_token(installation.id)
         
-        return access_token.token
+        # Create a new GitHub instance with the installation access token
+        installation_github = Github(access_token.token)
+        
+        return installation_github, access_token.token
     except Exception as error:
-        print(f"Error getting installation access token: {error}")
-        return None
+        print(f"Error getting installation GitHub instance: {error}")
+        return None, None
 
 def handle_pull_request_opened(payload, github_app):
     """
@@ -45,14 +56,14 @@ def handle_pull_request_opened(payload, github_app):
     print(f"PR Title: {pr_title}")
 
     try:
-        # Get installation access token
-        access_token = get_installation_access_token(github_app, repo_owner, repo_name)
-        if not access_token:
-            print(f"Failed to get installation access token for {repo_owner}/{repo_name}")
+        # Get installation-authenticated GitHub instance
+        installation_github, access_token = get_installation_github(github_app, repo_owner, repo_name)
+        if not installation_github or not access_token:
+            print(f"Failed to get installation GitHub instance for {repo_owner}/{repo_name}")
             return
         
-        # Get the repository and pull request
-        repo = github_app.get_repo(f"{repo_owner}/{repo_name}")
+        # Get the repository and pull request using installation auth
+        repo = installation_github.get_repo(f"{repo_owner}/{repo_name}")
         pr = repo.get_pull(pr_number)
         
         # Get the PR diff
@@ -96,6 +107,11 @@ def handle_pull_request_opened(payload, github_app):
         pr.create_issue_comment(MESSAGE_FOR_NEW_PRS)
         print(f"Successfully added comment to PR #{pr_number}")
         
+        # Add bot review comment
+        bot_comment = create_bot_review_comment()
+        pr.create_issue_comment(bot_comment)
+        print(f"Successfully added bot review comment to PR #{pr_number}")
+        
     except Exception as error:
         print(f"Error processing PR #{pr_number}: {error}")
 
@@ -113,14 +129,14 @@ def handle_pull_request_synchronized(payload, github_app):
     print(f"PR Title: {pr_title}")
 
     try:
-        # Get installation access token
-        access_token = get_installation_access_token(github_app, repo_owner, repo_name)
-        if not access_token:
-            print(f"Failed to get installation access token for {repo_owner}/{repo_name}")
+        # Get installation-authenticated GitHub instance
+        installation_github, access_token = get_installation_github(github_app, repo_owner, repo_name)
+        if not installation_github or not access_token:
+            print(f"Failed to get installation GitHub instance for {repo_owner}/{repo_name}")
             return
         
-        # Get the repository and pull request
-        repo = github_app.get_repo(f"{repo_owner}/{repo_name}")
+        # Get the repository and pull request using installation auth
+        repo = installation_github.get_repo(f"{repo_owner}/{repo_name}")
         pr = repo.get_pull(pr_number)
         
         # Get the PR diff
@@ -160,6 +176,11 @@ def handle_pull_request_synchronized(payload, github_app):
             print('')
         print(f"=== END Files Changed (Synchronized) ===\n")
 
+        # Add bot review comment for synchronized PR
+        bot_comment = create_bot_review_comment()
+        pr.create_issue_comment(bot_comment)
+        print(f"Successfully added bot review comment to synchronized PR #{pr_number}")
+        
         print(f"Successfully processed synchronized PR #{pr_number}")
         
     except Exception as error:
