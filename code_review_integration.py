@@ -94,6 +94,10 @@ class CodeReviewIntegration:
         try:
             logger.info(f"Starting code review for PR #{pr_info.get('number', 'unknown')}")
             
+            # Extract file paths directly from the diff content
+            extracted_files = self._extract_file_paths_from_diff(diff_content)
+            print(f"🔍 Extracted file paths from diff: {extracted_files}")
+            
             # Perform multi-agent review
             consolidated_review = self.multi_agent_reviewer.review_diff(
                 diff_content, 
@@ -106,10 +110,17 @@ class CodeReviewIntegration:
             
             # Generate JSON issues format for structured review comments
             file_path = pr_info.get('title', 'PR Changes')
+            print(f"🎯 Calling generate_json_review_comments with file_path: '{file_path}'")
+            print(f"📋 PR info: {pr_info}")
+            
+            # Pass the extracted files to the consolidation agent
             json_issues = self.multi_agent_reviewer.consolidation_agent.generate_json_review_comments(
                 consolidated_review, 
-                file_path
+                file_path,
+                extracted_files
             )
+            
+            print(f"📄 JSON issues returned from consolidation agent: {json_issues}")
             
             # Convert JSON issues to formatted review comment
             formatted_review = self._format_json_issues_for_pr(json_issues, pr_info)
@@ -206,6 +217,39 @@ class CodeReviewIntegration:
         
         return combined_content
     
+    def _extract_file_paths_from_diff(self, diff_content: str) -> List[str]:
+        """Extract file paths directly from diff content."""
+        import re
+        
+        print("🔍 Extracting file paths directly from diff content")
+        
+        # Look for diff headers like "diff --git a/file.js b/file.js"
+        diff_pattern = r'diff --git a/([^\s]+) b/([^\s]+)'
+        matches = re.findall(diff_pattern, diff_content)
+        print(f"🎯 Found {len(matches)} diff pattern matches: {matches}")
+        
+        if matches:
+            # Extract unique file paths
+            file_paths = set()
+            for old_path, new_path in matches:
+                file_paths.add(new_path)  # Use the new path (after changes)
+            extracted_files = list(file_paths)
+            print(f"✅ Extracted file paths from diff pattern: {extracted_files}")
+            return extracted_files
+        
+        # Also look for "+++ b/filename" patterns
+        plus_pattern = r'\+\+\+ b/([^\s\n]+)'
+        plus_matches = re.findall(plus_pattern, diff_content)
+        print(f"🎯 Found {len(plus_matches)} plus pattern matches: {plus_matches}")
+        
+        if plus_matches:
+            extracted_files = list(set(plus_matches))
+            print(f"✅ Extracted file paths from plus pattern: {extracted_files}")
+            return extracted_files
+        
+        print("❌ No file paths extracted from diff content")
+        return []
+    
     def _format_json_issues_for_pr(self, json_issues: str, pr_info: Dict[str, Any]) -> str:
         """
         Convert JSON issues to formatted PR review comment.
@@ -219,26 +263,52 @@ class CodeReviewIntegration:
         """
         try:
             import json
+            print(f"🎨 Formatting JSON issues for PR. Input: {json_issues}")
+            
             issues = json.loads(json_issues)
+            print(f"📊 Parsed {len(issues)} issues from JSON")
             
             if not issues:
                 return "✅ **No issues found!** The code looks good and follows best practices."
             
             # Group issues by file
             issues_by_file = {}
-            for issue in issues:
+            for i, issue in enumerate(issues):
                 file_path = issue.get('file_path', 'unknown')
+                print(f"📁 Issue {i+1} file_path: '{file_path}'")
                 if file_path not in issues_by_file:
                     issues_by_file[file_path] = []
                 issues_by_file[file_path].append(issue)
             
+            print(f"🗂️ Grouped issues by file: {list(issues_by_file.keys())}")
+            
+            # Sort files alphabetically
+            sorted_files = sorted(issues_by_file.keys())
+            
             # Format the review comment
             review_comment = "## 🔍 **Code Review Results**\n\n"
             
-            for file_path, file_issues in issues_by_file.items():
-                review_comment += f"### 📁 **{file_path}**\n\n"
+            for file_path in sorted_files:
+                file_issues = issues_by_file[file_path]
                 
-                for issue in file_issues:
+                # Sort issues by line number within each file
+                def get_line_number(issue):
+                    line_num = issue.get('line_number', 'N/A')
+                    # Handle non-numeric line numbers by putting them at the end
+                    if isinstance(line_num, (int, float)):
+                        return line_num
+                    elif isinstance(line_num, str) and line_num.isdigit():
+                        return int(line_num)
+                    else:
+                        return float('inf')  # Put non-numeric at the end
+                
+                sorted_issues = sorted(file_issues, key=get_line_number)
+                
+                # Add file section header with issue count
+                issue_count = len(sorted_issues)
+                review_comment += f"### 📁 **File: {file_path}** ({issue_count} issue{'s' if issue_count != 1 else ''})\n\n"
+                
+                for issue in sorted_issues:
                     line_number = issue.get('line_number', 'N/A')
                     comment = issue.get('review_comment', 'No comment provided')
                     

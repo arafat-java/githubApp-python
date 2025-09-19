@@ -361,8 +361,64 @@ Review covers security, performance, coding practices, architecture, readability
         # Return as JSON array
         return json.dumps(review_comments, indent=2, ensure_ascii=False)
     
-    def generate_json_review_comments(self, review: ConsolidatedReview, file_path: str) -> str:
+    def _extract_file_paths_from_diff(self, review: ConsolidatedReview) -> List[str]:
+        """Extract file paths from the diff content in the review."""
+        import re
+        
+        print("🔍 Starting file path extraction from diff content")
+        
+        # Try to get the original diff content from the first agent review
+        if review.agent_reviews:
+            print(f"📋 Found {len(review.agent_reviews)} agent reviews to check for diff content")
+            
+            # Look for diff content in the agent summaries
+            for i, agent_review in enumerate(review.agent_reviews):
+                summary = agent_review.summary
+                print(f"🔍 Checking agent review {i+1} ({agent_review.agent_type}) for diff content")
+                print(f"📏 Summary length: {len(summary)} characters")
+                
+                # Log first 500 characters of summary for debugging
+                summary_preview = summary[:500] + "..." if len(summary) > 500 else summary
+                print(f"📄 Summary preview: {summary_preview}")
+                
+                # Look for diff headers like "diff --git a/file.js b/file.js"
+                diff_pattern = r'diff --git a/([^\s]+) b/([^\s]+)'
+                matches = re.findall(diff_pattern, summary)
+                print(f"🎯 Found {len(matches)} diff pattern matches: {matches}")
+                
+                if matches:
+                    # Extract unique file paths
+                    file_paths = set()
+                    for old_path, new_path in matches:
+                        file_paths.add(new_path)  # Use the new path (after changes)
+                    extracted_files = list(file_paths)
+                    print(f"✅ Extracted file paths from diff pattern: {extracted_files}")
+                    return extracted_files
+                
+                # Also look for "+++ b/filename" patterns
+                plus_pattern = r'\+\+\+ b/([^\s\n]+)'
+                plus_matches = re.findall(plus_pattern, summary)
+                print(f"🎯 Found {len(plus_matches)} plus pattern matches: {plus_matches}")
+                
+                if plus_matches:
+                    extracted_files = list(set(plus_matches))
+                    print(f"✅ Extracted file paths from plus pattern: {extracted_files}")
+                    return extracted_files
+        else:
+            print("⚠️ No agent reviews found in consolidated review")
+        
+        print("❌ No file paths extracted from diff content")
+        return []
+    
+    def generate_json_review_comments(self, review: ConsolidatedReview, file_path: str, extracted_files: List[str] = None) -> str:
         """Generate JSON review comments using AI to format properly."""
+        
+        print(f"🚀 generate_json_review_comments called with file_path: '{file_path}'")
+        
+        # Use provided extracted files or try to extract from review
+        if extracted_files is None:
+            extracted_files = self._extract_file_paths_from_diff(review)
+        print(f"📁 Extracted files: {extracted_files}")
         
         # Prepare all agent findings for the consolidation agent
         agent_summaries = []
@@ -397,14 +453,20 @@ Output format (return ONLY this JSON, nothing else):
 If no issues found, return: []
 """
         
+        # Create file context for the prompt
+        file_context = ""
+        if extracted_files:
+            file_context = f"\nFiles in this diff: {', '.join(extracted_files)}\n"
+        else:
+            file_context = f"\nFile being reviewed: {file_path}\n"
+        
         prompt = f"""{REVIEW_GOAL}
 
 {OUTPUT_FORMAT}
 
 Agent Reviews to Consolidate:
 {chr(10).join(agent_summaries)}
-
-File being reviewed: {file_path}
+{file_context}
 
 CRITICAL CONSOLIDATION INSTRUCTIONS:
 1. ANALYZE ALL AGENT FEEDBACK thoroughly - do not miss any issues mentioned by any agent
@@ -458,15 +520,43 @@ Please consolidate these agent reviews into the JSON format specified above, ens
                         return "[]"
             
             if response:
+                print(f"🤖 AI response received: {response[:500]}...")
+                
                 # Try to parse and validate the JSON
                 try:
                     parsed_json = json.loads(response.strip())
+                    print(f"✅ Successfully parsed JSON with {len(parsed_json)} items")
+                    
                     if isinstance(parsed_json, list):
-                        # Update file paths to actual file
-                        for item in parsed_json:
+                        # Update file paths to actual files from diff
+                        for i, item in enumerate(parsed_json):
                             if isinstance(item, dict):
-                                item['file_path'] = file_path
-                        return json.dumps(parsed_json, indent=2, ensure_ascii=False)
+                                original_file_path = item.get('file_path', 'unknown')
+                                print(f"📝 Item {i+1} original file_path: '{original_file_path}'")
+                                
+                                # If we have extracted files, try to match the comment to the right file
+                                if extracted_files:
+                                    # Try to match based on line number or use round-robin distribution
+                                    original_file_path = item.get('file_path', 'unknown')
+                                    
+                                    # If the AI already set a reasonable file path, keep it
+                                    if original_file_path != 'unknown' and any(extracted_file in original_file_path for extracted_file in extracted_files):
+                                        new_file_path = original_file_path
+                                        print(f"🔄 Item {i+1} keeping AI-set file_path: '{new_file_path}'")
+                                    else:
+                                        # Use round-robin distribution across extracted files
+                                        file_index = i % len(extracted_files)
+                                        new_file_path = extracted_files[file_index]
+                                        print(f"🔄 Item {i+1} distributed to file: '{new_file_path}' (index {file_index})")
+                                    
+                                    item['file_path'] = new_file_path
+                                else:
+                                    item['file_path'] = file_path
+                                    print(f"🔄 Item {i+1} set file_path to fallback: '{file_path}'")
+                        
+                        final_json = json.dumps(parsed_json, indent=2, ensure_ascii=False)
+                        print(f"📤 Final JSON output: {final_json}")
+                        return final_json
                 except json.JSONDecodeError:
                     # If JSON parsing fails, try to extract JSON from markdown blocks
                     import re
@@ -479,9 +569,15 @@ Please consolidate these agent reviews into the JSON format specified above, ens
                         try:
                             parsed_json = json.loads(json_str)
                             if isinstance(parsed_json, list):
-                                for item in parsed_json:
+                                for i, item in enumerate(parsed_json):
                                     if isinstance(item, dict):
-                                        item['file_path'] = file_path
+                                        # If we have extracted files, use them
+                                        if extracted_files:
+                                            # Use round-robin distribution across extracted files
+                                            file_index = i % len(extracted_files)
+                                            item['file_path'] = extracted_files[file_index]
+                                        else:
+                                            item['file_path'] = file_path
                                 return json.dumps(parsed_json, indent=2, ensure_ascii=False)
                         except json.JSONDecodeError:
                             pass
