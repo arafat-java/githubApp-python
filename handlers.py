@@ -2,6 +2,7 @@ import requests
 from github import Github, Auth, GithubIntegration
 import json
 from datetime import datetime
+from code_review_integration import get_code_review_integration
 
 # This defines the message that your app will post to pull requests.
 MESSAGE_FOR_NEW_PRS = "Thanks for opening a new PR! Please follow our contributing guidelines to make your PR easier to review."
@@ -112,6 +113,38 @@ def handle_pull_request_opened(payload, github_app):
         pr.create_issue_comment(bot_comment)
         print(f"Successfully added bot review comment to PR #{pr_number}")
         
+        # Perform automated code review
+        try:
+            code_review_integration = get_code_review_integration()
+            if code_review_integration and code_review_integration.is_available():
+                print(f"Starting automated code review for PR #{pr_number}")
+                
+                # Get PR info for the review
+                pr_info = {
+                    'number': pr_number,
+                    'title': pr_title,
+                    'repo_owner': repo_owner,
+                    'repo_name': repo_name
+                }
+                
+                # Perform code review using the diff
+                review_comment = code_review_integration.review_pr_diff(diff_response.text, pr_info)
+                
+                if review_comment:
+                    # Add the review summary first
+                    summary = code_review_integration.get_review_summary(pr_info)
+                    pr.create_issue_comment(summary)
+                    
+                    # Add the detailed review
+                    pr.create_issue_comment(review_comment)
+                    print(f"Successfully added automated code review to PR #{pr_number}")
+                else:
+                    print(f"Code review failed for PR #{pr_number}")
+            else:
+                print(f"Code review functionality not available for PR #{pr_number}")
+        except Exception as review_error:
+            print(f"Error during code review for PR #{pr_number}: {review_error}")
+        
     except Exception as error:
         print(f"Error processing PR #{pr_number}: {error}")
 
@@ -180,6 +213,38 @@ def handle_pull_request_synchronized(payload, github_app):
         bot_comment = create_bot_review_comment()
         pr.create_issue_comment(bot_comment)
         print(f"Successfully added bot review comment to synchronized PR #{pr_number}")
+        
+        # Perform automated code review for synchronized PR
+        try:
+            code_review_integration = get_code_review_integration()
+            if code_review_integration and code_review_integration.is_available():
+                print(f"Starting automated code review for synchronized PR #{pr_number}")
+                
+                # Get PR info for the review
+                pr_info = {
+                    'number': pr_number,
+                    'title': pr_title,
+                    'repo_owner': repo_owner,
+                    'repo_name': repo_name
+                }
+                
+                # Perform code review using the diff
+                review_comment = code_review_integration.review_pr_diff(diff_response.text, pr_info)
+                
+                if review_comment:
+                    # Add the review summary first
+                    summary = code_review_integration.get_review_summary(pr_info)
+                    pr.create_issue_comment(summary)
+                    
+                    # Add the detailed review
+                    pr.create_issue_comment(review_comment)
+                    print(f"Successfully added automated code review to synchronized PR #{pr_number}")
+                else:
+                    print(f"Code review failed for synchronized PR #{pr_number}")
+            else:
+                print(f"Code review functionality not available for synchronized PR #{pr_number}")
+        except Exception as review_error:
+            print(f"Error during code review for synchronized PR #{pr_number}: {review_error}")
         
         print(f"Successfully processed synchronized PR #{pr_number}")
         
