@@ -15,6 +15,28 @@ def create_bot_review_comment():
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
     return f"🤖 **Innovation days bot** has reviewed this PR at `{timestamp}`"
 
+def create_ignore_message():
+    """
+    Create a message when PR review is ignored
+    """
+    return "You demanded I shut up? Alright.\nBut don't cry when that for loop turns into Skynet. 🤖"
+
+def should_skip_review(pr_description):
+    """
+    Check if PR description contains the ignore flag
+    
+    Args:
+        pr_description: The PR description text
+        
+    Returns:
+        bool: True if review should be skipped, False otherwise
+    """
+    if not pr_description:
+        return False
+    
+    # Check for the exact ignore flag string
+    return "@adsk_pr_review_bot_ignore" in pr_description
+
 def get_installation_github(github_app, repo_owner, repo_name):
     """
     Get a GitHub instance authenticated with installation access token for the repository
@@ -55,11 +77,33 @@ def _process_pull_request(payload, github_app, is_new_pr=False):
     repo_owner = payload['repository']['owner']['login']
     repo_name = payload['repository']['name']
     pr_title = payload['pull_request']['title']
+    pr_description = payload['pull_request'].get('body', '')
     
     event_type = "opened" if is_new_pr else "synchronized"
     print(f"Received a pull request {event_type} event for #{pr_number}")
     print(f"Repository: {repo_owner}/{repo_name}")
     print(f"PR Title: {pr_title}")
+    
+    # Check if PR review should be skipped
+    if should_skip_review(pr_description):
+        print(f"PR #{pr_number} contains @adsk_pr_review_bot_ignore - skipping review and summarization")
+        try:
+            # Get installation-authenticated GitHub instance
+            installation_github, access_token = get_installation_github(github_app, repo_owner, repo_name)
+            if installation_github and access_token:
+                # Get the repository and pull request using installation auth
+                repo = installation_github.get_repo(f"{repo_owner}/{repo_name}")
+                pr = repo.get_pull(pr_number)
+                
+                # Add the ignore message
+                ignore_comment = create_ignore_message()
+                pr.create_issue_comment(ignore_comment)
+                print(f"Successfully added ignore message to {event_type} PR #{pr_number}")
+            else:
+                print(f"Failed to get installation GitHub instance for ignore message in {repo_owner}/{repo_name}")
+        except Exception as error:
+            print(f"Error adding ignore message to {event_type} PR #{pr_number}: {error}")
+        return
 
     try:
         # Get installation-authenticated GitHub instance
