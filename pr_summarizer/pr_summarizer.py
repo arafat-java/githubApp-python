@@ -547,11 +547,12 @@ erDiagram
     ORDER ||--o{ ORDER_ITEM : contains
 ```
 
-CRITICAL SYNTAX RULES:
+CRITICAL SYNTAX RULES - FOLLOW EXACTLY:
 - For flowchart: Use simple node connections A --> B (no conditions or pipes)
-- Node labels: A[Simple Text] - no parentheses, pipes, or special characters
+- Node labels: A[Simple Text] - NO parentheses (), NO pipes |, NO special characters
 - NO conditional syntax like -->|Yes| or -->|Contains|
-- NO function calls in labels like [Call onCheckout()]
+- NO function calls in labels like [init_db()] or [Call onCheckout()]
+- Use descriptive names without parentheses: [init_db] or [Database Initialization]
 - For classDiagram: +type property_name (no colons)
 - Methods: +return_type method_name() 
 - For erDiagram: Use simple relationships like TABLE1 ||--o{ TABLE2 : has
@@ -559,6 +560,14 @@ CRITICAL SYNTAX RULES:
 - Always include a descriptive label before each diagram
 - Keep diagrams simple and focus on the main flow/structure
 - If you need conditions, use decision diamonds: B{Decision}
+
+COMMON MISTAKES TO AVOID:
+- ❌ D[init_db()] - parentheses cause parsing errors
+- ❌ A -->|Function| B - pipes in arrows cause errors
+- ❌ [Call onCheckout()] - function calls in labels
+- ✅ D[init_db] or D[Database Initialization] - clean labels
+- ✅ A --> B - simple connections
+- ✅ [User Authentication] - descriptive text without special chars
 
 Be concise - focus only on the most important architectural changes."""
             },

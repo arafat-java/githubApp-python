@@ -260,30 +260,6 @@ class CodeReviewIntegration:
             logger.error(f"Error formatting JSON issues: {e}")
             return f"❌ **Review Error:** {str(e)}"
     
-    def get_review_summary(self, pr_info: Dict[str, Any]) -> str:
-        """
-        Get a summary message for the code review.
-        
-        Args:
-            pr_info: Dictionary containing PR information
-            
-        Returns:
-            Summary message
-        """
-        pr_number = pr_info.get('number', 'unknown')
-        pr_title = pr_info.get('title', 'Unknown PR')
-        
-        return f"""🤖 **Automated Code Review for PR #{pr_number}**
-
-**PR Title:** {pr_title}
-
-This review was generated using our multi-agent AI code review system, which analyzes your changes for:
-- 🔒 Security vulnerabilities
-- ⚡ Performance issues  
-- 📝 Code quality and best practices
-- 📖 Readability and maintainability
-
-Please review the feedback below and address any critical issues before merging."""
 
 
 def create_code_review_integration(use_local_llm: bool = False) -> CodeReviewIntegration:

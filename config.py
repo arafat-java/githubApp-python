@@ -28,5 +28,5 @@ LOCAL_WEBHOOK_URL = f"http://{HOST}:{PORT}{PATH}"
 # Log configuration for debugging
 print("Configuration loaded:")
 print(f"APP_ID: {APP_ID}")
-print(f"WEBHOOK_SECRET: {WEBHOOK_SECRET}")
+# print(f"WEBHOOK_SECRET: {WEBHOOK_SECRET}")
 print(f"PRIVATE_KEY_PATH: {PRIVATE_KEY_PATH}")
